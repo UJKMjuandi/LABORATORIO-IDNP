@@ -1,4 +1,4 @@
-package com.example.planointeractivo_compose
+package com.example.campusnavigator_compose
 
 import org.junit.Test
 

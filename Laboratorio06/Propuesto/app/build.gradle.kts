@@ -4,13 +4,13 @@ plugins {
 }
 
 android {
-    namespace = "com.example.planointeractivo_compose"
+    namespace = "com.example.campusnavigator_compose"
     compileSdk {
         version = release(37)
     }
 
     defaultConfig {
-        applicationId = "com.example.planointeractivo_compose"
+        applicationId = "com.example.campusnavigator_compose"
         minSdk = 24
         targetSdk = 37
         versionCode = 1

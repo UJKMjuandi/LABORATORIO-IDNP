@@ -1,4 +1,4 @@
-package com.example.planointeractivo_compose.ui.theme
+package com.example.campusnavigator_compose.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle

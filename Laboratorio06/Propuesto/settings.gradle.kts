@@ -22,6 +22,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "PlanoInteractivo_Compose"
+rootProject.name = "CampusNavigator_Compose"
 include(":app")
  
