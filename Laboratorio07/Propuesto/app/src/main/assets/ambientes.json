@@ -1,0 +1,18 @@
+[
+  {
+    "titulo": "Salón 1",
+    "descripcion": "Sala de cómputo 1"
+  },
+  {
+    "titulo": "Salón 2",
+    "descripcion": "Sala de cómputo 2"
+  },
+  {
+    "titulo": "Salón 3",
+    "descripcion": "Laboratorio de informática"
+  },
+  {
+    "titulo": "Patio",
+    "descripcion": "Patio central de la edificación"
+  }
+]
