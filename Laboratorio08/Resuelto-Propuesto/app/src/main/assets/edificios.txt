@@ -1,0 +1,9 @@
+1|Biblioteca Central|Servicios|Préstamo de libros y salas de estudio
+2|Comedor Universitario|Servicios|Alimentación para estudiantes
+3|Facultad de Ingeniería|Académico|Aulas y laboratorios de ingeniería
+4|Facultad de Ciencias|Académico|Aulas y laboratorios de ciencias
+5|Coliseo Universitario|Deportes|Actividades deportivas y eventos
+6|Auditorio Central|Eventos|Conferencias y ceremonias
+7|Rectorado|Administrativo|Oficinas de la dirección universitaria
+8|Pabellón de Sistemas|Académico|Aulas de cómputo y laboratorios de software
+9|Clínica Universitaria|Salud|Atención médica básica para estudiantes
