@@ -10,18 +10,28 @@ import android.os.IBinder
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,11 +39,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Embedded
@@ -46,6 +58,7 @@ import androidx.room.Query
 import androidx.room.Relation
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.Transaction
 import androidx.room.Update
 import com.example.sincronizacionservicio_compose.ui.theme.SincronizacionServicio_ComposeTheme
 import kotlinx.coroutines.CoroutineScope
@@ -87,14 +100,21 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun PantallaSincronizacion(dao: EdificioDao) {
     val context = LocalContext.current
+    val viewModel: EdificiosViewModel = viewModel(
+        factory = EdificiosViewModelFactory(dao)
+    )
+    val edificios by viewModel.edificios.collectAsState()
 
     var resultado by remember { mutableStateOf<String?>(null) }
     var enCurso by remember { mutableStateOf(false) }
+    var edificioAEditar by remember { mutableStateOf<EdificioEntity?>(null) }
+    var ambienteAEditar by remember { mutableStateOf<AmbienteEntity?>(null) }
+    var ambienteParaNota by remember { mutableStateOf<AmbienteEntity?>(null) }
 
     DisposableEffect(Unit) {
         val receiverExito = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context?, intent: Intent?) {
-                Log.d("SYNC", "3. Aviso recibido en la pantalla")
+                Log.d("SYNC", "3. Aviso recibido")
                 val cantidad = intent?.getIntExtra(EXTRA_EDIFICIOS, 0) ?: 0
                 resultado = "Sincronización completa: $cantidad edificios actualizados"
                 enCurso = false
@@ -102,24 +122,17 @@ fun PantallaSincronizacion(dao: EdificioDao) {
         }
         val receiverError = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context?, intent: Intent?) {
-                Log.d("SYNC", "3b. Aviso de error recibido")
-                val mensaje = intent?.getStringExtra(EXTRA_MENSAJE_ERROR) ?: "Error desconocido"
+                Log.d("SYNC", "3b. Aviso de error")
+                val mensaje = intent?.getStringExtra(EXTRA_MENSAJE_ERROR) ?: "Error"
                 resultado = "⚠️ $mensaje"
                 enCurso = false
             }
         }
-
         val filtroExito = IntentFilter(ACCION_SYNC_LISTA)
         val filtroError = IntentFilter(ACCION_SYNC_ERROR)
 
-        ContextCompat.registerReceiver(
-            context, receiverExito, filtroExito,
-            ContextCompat.RECEIVER_NOT_EXPORTED
-        )
-        ContextCompat.registerReceiver(
-            context, receiverError, filtroError,
-            ContextCompat.RECEIVER_NOT_EXPORTED
-        )
+        ContextCompat.registerReceiver(context, receiverExito, filtroExito, ContextCompat.RECEIVER_NOT_EXPORTED)
+        ContextCompat.registerReceiver(context, receiverError, filtroError, ContextCompat.RECEIVER_NOT_EXPORTED)
 
         onDispose {
             context.unregisterReceiver(receiverExito)
@@ -131,42 +144,156 @@ fun PantallaSincronizacion(dao: EdificioDao) {
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(16.dp)
     ) {
         Button(onClick = {
             resultado = null
             enCurso = true
-            context.startService(
-                Intent(context, SincronizacionService::class.java)
-            )
-        }) {
-            Text("Sincronizar")
-        }
+            context.startService(Intent(context, SincronizacionService::class.java))
+        }) { Text("Sincronizar") }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(Modifier.height(8.dp))
 
         Button(
             onClick = {
-                context.stopService(
-                    Intent(context, SincronizacionService::class.java)
-                )
+                context.stopService(Intent(context, SincronizacionService::class.java))
                 resultado = "Sincronización detenida manualmente"
                 enCurso = false
-                Log.d("SYNC", "Servicio detenido por el usuario")
             },
             enabled = enCurso
-        ) {
-            Text("Detener sincronización")
-        }
+        ) { Text("Detener sincronización") }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(Modifier.height(8.dp))
 
-        if (resultado == null) {
-            CircularProgressIndicator()
-        } else {
-            Text(resultado ?: "")
+        if (resultado == null) CircularProgressIndicator()
+        else Text(resultado ?: "")
+
+        Spacer(Modifier.height(16.dp))
+        HorizontalDivider()
+        Spacer(Modifier.height(8.dp))
+
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
+            items(edificios, key = { it.edificio.id }) { item ->
+                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "${item.edificio.nombre} (${item.edificio.categoria})",
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { edificioAEditar = item.edificio }) { Text("Editar") }
+                        TextButton(onClick = { viewModel.eliminarEdificio(item.edificio) }) { Text("Eliminar") }
+                    }
+
+                    item.ambientes.forEach { ambienteConNotas ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(start = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("• ${ambienteConNotas.ambiente.nombre}", modifier = Modifier.weight(1f))
+                            TextButton(onClick = { ambienteAEditar = ambienteConNotas.ambiente }) { Text("Editar") }
+                            TextButton(onClick = { viewModel.eliminarAmbiente(ambienteConNotas.ambiente) }) { Text("Eliminar") }
+                            TextButton(onClick = { ambienteParaNota = ambienteConNotas.ambiente }) { Text("+ Nota") }
+                        }
+                        ambienteConNotas.notas.forEach { nota ->
+                            Text(
+                                text = "    - ${nota.texto}",
+                                modifier = Modifier.padding(start = 32.dp)
+                            )
+                        }
+                    }
+                }
+                HorizontalDivider()
+            }
         }
+    }
+
+    edificioAEditar?.let { edificio ->
+        var texto by remember(edificio.id) { mutableStateOf(edificio.nombre) }
+        AlertDialog(
+            onDismissRequest = { edificioAEditar = null },
+            title = { Text("Editar edificio") },
+            text = { OutlinedTextField(value = texto, onValueChange = { texto = it }) },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.actualizarEdificio(edificio.copy(nombre = texto))
+                    edificioAEditar = null
+                }) { Text("Guardar") }
+            },
+            dismissButton = { TextButton(onClick = { edificioAEditar = null }) { Text("Cancelar") } }
+        )
+    }
+
+    ambienteAEditar?.let { ambiente ->
+        var texto by remember(ambiente.id) { mutableStateOf(ambiente.nombre) }
+        AlertDialog(
+            onDismissRequest = { ambienteAEditar = null },
+            title = { Text("Editar ambiente") },
+            text = { OutlinedTextField(value = texto, onValueChange = { texto = it }) },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.actualizarAmbiente(ambiente.copy(nombre = texto))
+                    ambienteAEditar = null
+                }) { Text("Guardar") }
+            },
+            dismissButton = { TextButton(onClick = { ambienteAEditar = null }) { Text("Cancelar") } }
+        )
+    }
+
+    ambienteParaNota?.let { ambiente ->
+        var texto by remember(ambiente.id) { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { ambienteParaNota = null },
+            title = { Text("Nueva nota para ${ambiente.nombre}") },
+            text = { OutlinedTextField(value = texto, onValueChange = { texto = it }) },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (texto.isNotBlank()) {
+                        viewModel.insertarNota(NotaEntity(ambienteId = ambiente.id, texto = texto))
+                    }
+                    ambienteParaNota = null
+                }) { Text("Guardar") }
+            },
+            dismissButton = { TextButton(onClick = { ambienteParaNota = null }) { Text("Cancelar") } }
+        )
+    }
+}
+
+class EdificiosViewModel(private val dao: EdificioDao) : ViewModel() {
+
+    private val _edificios = MutableStateFlow<List<EdificioConAmbientesYNotas>>(emptyList())
+    val edificios: StateFlow<List<EdificioConAmbientesYNotas>> = _edificios.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            if (dao.contarEdificios() == 0) {
+                val idBib = dao.insertarEdificio(EdificioEntity(nombre = "Biblioteca Central", categoria = "Biblioteca"))
+                val idIng = dao.insertarEdificio(EdificioEntity(nombre = "Facultad de Ingeniería", categoria = "Académico"))
+                dao.insertarAmbiente(AmbienteEntity(edificioId = idBib.toInt(), nombre = "Sala de lectura"))
+                dao.insertarAmbiente(AmbienteEntity(edificioId = idBib.toInt(), nombre = "Hemeroteca"))
+                dao.insertarAmbiente(AmbienteEntity(edificioId = idIng.toInt(), nombre = "Laboratorio de cómputo"))
+            }
+            dao.observarEdificiosConAmbientesYNotas().collect { lista ->
+                _edificios.value = lista
+            }
+        }
+    }
+
+    fun actualizarEdificio(edificio: EdificioEntity) = viewModelScope.launch { dao.actualizarEdificio(edificio) }
+    fun eliminarEdificio(edificio: EdificioEntity) = viewModelScope.launch { dao.eliminarEdificio(edificio) }
+    fun actualizarAmbiente(ambiente: AmbienteEntity) = viewModelScope.launch { dao.actualizarAmbiente(ambiente) }
+    fun eliminarAmbiente(ambiente: AmbienteEntity) = viewModelScope.launch { dao.eliminarAmbiente(ambiente) }
+    fun insertarNota(nota: NotaEntity) = viewModelScope.launch { dao.insertarNota(nota) }
+}
+
+class EdificiosViewModelFactory(private val dao: EdificioDao) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        @Suppress("UNCHECKED_CAST")
+        return EdificiosViewModel(dao) as T
     }
 }
 
@@ -177,11 +304,7 @@ class SincronizacionService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d("SYNC", "1. Servicio iniciado")
 
-        val db = Room.databaseBuilder(
-            applicationContext,
-            AppDatabase::class.java,
-            "app.db"
-        ).build()
+        val db = Room.databaseBuilder(applicationContext, AppDatabase::class.java, "app.db").build()
         val dao = db.edificioDao()
 
         CoroutineScope(Dispatchers.IO).launch {
@@ -190,12 +313,10 @@ class SincronizacionService : Service() {
 
                 val hayError = Random.nextInt(1, 100) <= 25
                 if (hayError) {
-                    val intentError = Intent(ACCION_SYNC_ERROR)
-                    intentError.setPackage(packageName)
-                    intentError.putExtra(
-                        EXTRA_MENSAJE_ERROR,
-                        "Falló la sincronización con el servidor. Reintente."
-                    )
+                    val intentError = Intent(ACCION_SYNC_ERROR).apply {
+                        setPackage(packageName)
+                        putExtra(EXTRA_MENSAJE_ERROR, "Falló la sincronización con el servidor. Reintente.")
+                    }
                     sendBroadcast(intentError)
                     Log.d("SYNC", "2b. Aviso de ERROR enviado")
                     stopSelf()
@@ -203,26 +324,20 @@ class SincronizacionService : Service() {
                 }
 
                 val edificios = dao.obtenerTodosConAmbientes()
-
                 var actualizados = 0
-                for (edificioConAmbientes in edificios) {
-                    val cumpleCondicion =
-                        edificioConAmbientes.ambientes.isNotEmpty() &&
-                                edificioConAmbientes.edificio.categoria.isNotBlank()
-
-                    if (cumpleCondicion) {
-                        val actualizado = edificioConAmbientes.edificio.copy(
-                            nombre = edificioConAmbientes.edificio.nombre
-                                .substringBefore(" [SYNC]") + " [SYNC]"
-                        )
-                        dao.actualizarEdificio(actualizado)
+                for (item in edificios) {
+                    val cumple = item.ambientes.isNotEmpty() && item.edificio.categoria.isNotBlank()
+                    if (cumple) {
+                        val nuevoNombre = item.edificio.nombre.substringBefore(" [SYNC]") + " [SYNC]"
+                        dao.actualizarEdificio(item.edificio.copy(nombre = nuevoNombre))
                         actualizados++
                     }
                 }
 
-                val resultado = Intent(ACCION_SYNC_LISTA)
-                resultado.setPackage(packageName)
-                resultado.putExtra(EXTRA_EDIFICIOS, actualizados)
+                val resultado = Intent(ACCION_SYNC_LISTA).apply {
+                    setPackage(packageName)
+                    putExtra(EXTRA_EDIFICIOS, actualizados)
+                }
                 sendBroadcast(resultado)
                 Log.d("SYNC", "2. Aviso enviado: $actualizados edificios reales")
 
@@ -260,13 +375,42 @@ data class AmbienteEntity(
     val nombre: String
 )
 
+@Entity(
+    foreignKeys = [
+        ForeignKey(
+            entity = AmbienteEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["ambienteId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class NotaEntity(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val ambienteId: Int,
+    val texto: String
+)
+
 data class EdificioConAmbientes(
     @Embedded val edificio: EdificioEntity,
+    @Relation(parentColumn = "id", entityColumn = "edificioId")
+    val ambientes: List<AmbienteEntity>
+)
+
+data class AmbienteConNotas(
+    @Embedded val ambiente: AmbienteEntity,
+    @Relation(parentColumn = "id", entityColumn = "ambienteId")
+    val notas: List<NotaEntity>
+)
+
+data class EdificioConAmbientesYNotas(
+    @Embedded val edificio: EdificioEntity,
     @Relation(
+        entity = AmbienteEntity::class,
         parentColumn = "id",
         entityColumn = "edificioId"
     )
-    val ambientes: List<AmbienteEntity>
+    val ambientes: List<AmbienteConNotas>
 )
 
 @Dao
@@ -274,32 +418,54 @@ interface EdificioDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertarEdificio(edificio: EdificioEntity): Long
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertarAmbiente(ambiente: AmbienteEntity): Long
-
     @Update
     suspend fun actualizarEdificio(edificio: EdificioEntity)
 
-    @Update
-    suspend fun actualizarAmbiente(ambiente: AmbienteEntity)
+    @Query("DELETE FROM EdificioEntity WHERE id = :id")
+    suspend fun eliminarEdificioPorId(id: Int)
 
-    @Query("SELECT * FROM EdificioEntity")
-    suspend fun obtenerTodos(): List<EdificioEntity>
+    suspend fun eliminarEdificio(edificio: EdificioEntity) = eliminarEdificioPorId(edificio.id)
 
     @Query("SELECT COUNT(*) FROM EdificioEntity")
     suspend fun contarEdificios(): Int
 
-    @androidx.room.Transaction
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertarAmbiente(ambiente: AmbienteEntity): Long
+
+    @Update
+    suspend fun actualizarAmbiente(ambiente: AmbienteEntity)
+
+    @Query("DELETE FROM AmbienteEntity WHERE id = :id")
+    suspend fun eliminarAmbientePorId(id: Int)
+
+    suspend fun eliminarAmbiente(ambiente: AmbienteEntity) = eliminarAmbientePorId(ambiente.id)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertarNota(nota: NotaEntity): Long
+
+    @Update
+    suspend fun actualizarNota(nota: NotaEntity)
+
+    @Query("DELETE FROM NotaEntity WHERE id = :id")
+    suspend fun eliminarNotaPorId(id: Int)
+
+    suspend fun eliminarNota(nota: NotaEntity) = eliminarNotaPorId(nota.id)
+
+    @Transaction
     @Query("SELECT * FROM EdificioEntity")
     suspend fun obtenerTodosConAmbientes(): List<EdificioConAmbientes>
 
-    @androidx.room.Transaction
-    @Query("SELECT * FROM EdificioEntity WHERE id = :id")
-    suspend fun obtenerPorIdConAmbientes(id: Int): EdificioConAmbientes?
+    @Transaction
+    @Query("SELECT * FROM AmbienteEntity")
+    suspend fun observarAmbientesConNotas(): List<AmbienteConNotas>
+
+    @Transaction
+    @Query("SELECT * FROM EdificioEntity")
+    fun observarEdificiosConAmbientesYNotas(): Flow<List<EdificioConAmbientesYNotas>>
 }
 
 @Database(
-    entities = [EdificioEntity::class, AmbienteEntity::class],
+    entities = [EdificioEntity::class, AmbienteEntity::class, NotaEntity::class],
     version = 1,
     exportSchema = false
 )
